@@ -1,0 +1,69 @@
+version: '3.7'
+services:
+  rails: &rails
+    build:
+      context: .
+      dockerfile: path/to/Dockerfile-dev
+      args:
+        RUBY_VERSION: <Ruby-version>
+        BUNDLER_VERSION: <bundler-version>
+        uid: $uid
+        gid: $gid
+        PORT: $PORT
+    environment: &environment
+      REDIS_URL: $REDIS_URL
+      PORT: $PORT
+    ports:
+      - $PORT:$PORT
+
+  dev: &dev
+    <<: *rails
+    tty: true
+    stdin_open: true
+    command: bundle exec rails s -p 3000 -b '0.0.0.0'
+    tty: true
+    stdin_open: true
+    user: $uid:$gid
+    working_dir: '/var/www'
+    restart: on-failure
+    volumes:
+      - type: bind
+        source: ./
+        target: /var/www
+    ports:
+      - $PORT:$PORT
+    environment:
+      RAILS_ENV: "development"
+      DB_DEV_HOST: "mariadb_dev"
+      MYSQL_USER: $MYSQL_USER
+      MYSQL_PASSWORD: $MYSQL_PASSWORD
+    depends_on:
+      - mariadb_dev
+      - redis
+
+  test: &test
+    <<: *dev
+    working_dir: '/var/www'
+    user: $uid:$gid
+    environment:
+      REDIS_URL: 'redis://redis:6379/0'
+      RAILS_ENV: "test"
+      CODECOV: 'true'
+    depends_on:
+      - redis
+
+  redis:
+    image: redis
+
+  mariadb: &mariadb
+    image: mariadb:10.1
+    ports:
+      - 3308:3306
+
+  mariadb_dev:
+    <<: *mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: <your root password>
+      MYSQL_USER: <your user>
+      MYSQL_PASSWORD: <your user password>
+      MYSQL_DATABASE: <your database name>

@@ -1,0 +1,45 @@
+ARG RUBY_VERSION
+FROM ruby:$RUBY_VERSION
+
+ARG BUNDLER_VERSION
+ARG DB_PROD_HOST
+
+ENV DB_PROD_HOST=${DB_PROD_HOST}
+
+# The qq is for silent output in the console
+RUN apt-get update -qq && \
+  apt-get install -y build-essential openssl libssl-dev nodejs less vim libsasl2-dev
+
+RUN  curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - &&\
+  tee /etc/apt/sources.list.d/yarn.list &&\
+  apt-get update -qq && apt-get install -y yarn
+
+# Install bundler and set app folder
+RUN gem install bundler -v $BUNDLER_VERSION && \
+  mkdir -p /app && mkdir -p /srv/log
+
+WORKDIR /app
+
+# We are copying the Gemfile first, so we can install
+# all the dependencies without any issues
+# Rails will be installed once you load it from the Gemfile
+# This will also ensure that gems are cached and onlu updated when
+# they change.
+COPY Gemfile ./
+COPY Gemfile.lock ./
+
+# Installs the Gem File.
+RUN bundle install --without development test
+
+# We copy all the files from the current directory to our directory
+COPY . $RAILS_ROOT
+
+# Use whatever works best for you
+# COPY docker/production/config/unicorn_docker.rb config/unicorn.rb
+
+RUN bundle exec rails assets:clobber && bundle exec rake assets:precompile
+
+EXPOSE 3000
+
+# change to whatever works best for you
+CMD ["script/docker/app_start.sh"]

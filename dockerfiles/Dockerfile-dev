@@ -1,0 +1,67 @@
+ARG RUBY_VERSION
+FROM ruby:$RUBY_VERSION
+
+ARG BUNDLER_VERSION
+ARG uid
+ARG gid
+ARG PORT
+ARG REDIS_URL
+
+# set some env variables
+ENV REDIS_URL=${REDIS_URL}
+ENV PORT=${PORT}
+
+# The qq is for silent output in the console
+RUN apt-get update -qq && \
+  apt-get install -y build-essential openssl libssl-dev nodejs less vim libsasl2-dev
+
+RUN  curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - &&\
+  tee /etc/apt/sources.list.d/yarn.list &&\
+  apt-get update -qq && apt-get install -y yarn
+
+# Creating a user to overcome the fact that on Linux
+# Docker runs as a daemon with root permissions and
+# takes ownership of your mounted folder
+RUN groupadd -g $gid webuser && \
+  useradd -l -ms /bin/bash -u $uid -g $gid webuser
+
+# Sets the path where the app is going to be installed
+
+ENV WORK_ROOT /var
+ENV RAILS_ROOT $WORK_ROOT/www/
+ENV LANG C.UTF-8
+ENV GEM_HOME $WORK_ROOT/bundle
+ENV BUNDLE_BIN $GEM_HOME/gems/bin
+ENV PATH $GEM_HOME/bin:$BUNDLE_BIN:$PATH
+
+RUN gem install bundler -v $BUNDLER_VERSION && \
+  mkdir -p $RAILS_ROOT && mkdir -p /var/www/tmp
+
+# This is given by the Ruby Image.
+# This will be the de-facto directory that
+# all the contents are going to be stored.
+RUN chown -R webuser:websuer $GEM_HOME &&\
+  bundle config --path=$GEM_HOME
+
+WORKDIR $RAILS_ROOT
+
+# We are copying the Gemfile first, so we can install
+# all the dependencies without any issues
+# Rails will be installed once you load it from the Gemfile
+# This will also ensure that gems are cached and onlu updated when
+# they change.
+COPY Gemfile ./
+COPY Gemfile.lock ./
+
+RUN chown -R webuser:webuser $RAILS_ROOT
+
+USER webuser
+# Installs the Gem File.
+RUN bundle install
+
+# We copy all the files from the current directory to our
+# /app directory
+# Pay close attention to the dot (.)
+# The first one will select ALL The files of the current directory,
+# The second dot will copy it to the WORKDIR!
+COPY . $RAILS_ROOT
